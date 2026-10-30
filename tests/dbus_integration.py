@@ -265,6 +265,14 @@ class Integration(unittest.TestCase):
         self.assertIn('ERROR 3 logind:', line)
         self.assertEqual(len(self.service.calls), 1)
 
+    def test_broader_logind_and_consolekit_are_explicit(self):
+        for backend, name in ((3, 'logind'), (4, 'consolekit')):
+            with self.subTest(backend=name):
+                process, line = self.start(backend=backend, broad=1)
+                self.assertEqual(line, f'OK {name} 1')
+                self.assertEqual(self.service.calls[-1][1],
+                    ('sleep:idle', 'test-application', 'Transferring test files', 'block'))
+
     def test_explicit_consolekit(self):
         process, line = self.start(backend=4)
         self.assertEqual(line, 'OK consolekit 0')
@@ -402,11 +410,12 @@ class Integration(unittest.TestCase):
 
     def test_hung_service_total_deadline(self):
         self.service.behaviour['org.freedesktop.login1.Manager'] = 'hang'
+        self.service.behaviour['org.freedesktop.ConsoleKit.Manager'] = 'hang'
         start = time.monotonic()
         process, line = self.start(backend=0, timeout=120)
         self.assertIn('deadline exceeded', line)
         self.assertLess(time.monotonic() - start, 1.5)
-        self.assertEqual(len(self.service.calls), 1)  # no second budget for fallback
+        self.assertEqual(len(self.service.calls), 2)  # both share the total budget
 
     def test_service_disappeared(self):
         process, line = self.start()
@@ -463,7 +472,19 @@ class Integration(unittest.TestCase):
     def test_portal_refusal_falls_back(self):
         self.service.behaviour['org.freedesktop.portal.Inhibit'] = 'refuse'
         process, line = self.start(backend=0, broad=1)
-        self.assertEqual(line, 'OK logind 0')
+        self.assertEqual(line, 'OK logind 1')
+        self.assertEqual(self.service.calls[-1][1],
+            ('sleep:idle', 'test-application', 'Transferring test files', 'block'))
+        sender = self.service.portal_senders[0]
+        self.assertTrue(eventually(lambda: not self.service.owner_present(sender)))
+
+    def test_silent_portal_does_not_starve_logind_fallback(self):
+        self.service.behaviour['org.freedesktop.portal.Inhibit'] = 'silent'
+        start = time.monotonic()
+        process, line = self.start(backend=0, broad=1, timeout=300)
+        self.assertEqual(line, 'OK logind 1')
+        self.assertEqual(self.service.calls[-1][1][0], 'sleep:idle')
+        self.assertLess(time.monotonic() - start, 1.5)
         sender = self.service.portal_senders[0]
         self.assertTrue(eventually(lambda: not self.service.owner_present(sender)))
 

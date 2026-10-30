@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 libwakeguard contributors
 #pragma once
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -39,5 +41,37 @@ class guard {
 
   private:
     std::unique_ptr<wg_guard, deleter> value_;
+};
+enum class phase : std::uint8_t { disabled, acquiring, active, unavailable };
+struct controller_status {
+    phase state = phase::disabled;
+    wg_status error = WG_OK;
+    wg_backend backend = WG_BACKEND_AUTO;
+    wg_scope scope = WG_SCOPE_IDLE_SYSTEM;
+    std::string detail;
+};
+
+// A single worker owns the inhibitor, runs acquisition/health checks and retries
+// failures with backoff. Repeated requests are idempotent and do no bus/OS work.
+// Options strings are snapshotted. take_event() returns the latest transition,
+// including backend failure details, for logging on the application's thread.
+class WG_EXPORT controller {
+  public:
+    explicit controller(const wg_options &options,
+                        std::chrono::milliseconds retry = std::chrono::seconds(30),
+                        std::chrono::milliseconds check = std::chrono::seconds(30));
+    ~controller();
+    controller(const controller &) = delete;
+    controller &operator=(const controller &) = delete;
+    void set_required(bool required);
+    bool take_event(controller_status &event);
+    // Joins the worker and releases before returning. Late acquisition results
+    // are discarded after disable/shutdown. May wait for the acquisition budget
+    // or a native OS call that has no cancellation API. Idempotent; no restart.
+    void shutdown();
+
+  private:
+    struct impl;
+    std::unique_ptr<impl> value_;
 };
 } // namespace wakeguard

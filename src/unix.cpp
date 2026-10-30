@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 libwakeguard contributors
 #include "internal.hpp"
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -183,7 +186,8 @@ bool acquire_fd(unix_guard &guard, const wg_options &options, deadline &limit,
         guard.connection.get(), guard.owner.c_str(),
         logind ? "/org/freedesktop/login1" : "/org/freedesktop/ConsoleKit/Manager",
         logind ? "org.freedesktop.login1.Manager" : "org.freedesktop.ConsoleKit.Manager", "Inhibit",
-        g_variant_new("(ssss)", "idle", options.application, options.reason, "block"),
+        g_variant_new("(ssss)", options.allow_suspend_block ? "sleep:idle" : "idle",
+                      options.application, options.reason, "block"),
         G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NONE, 60000, nullptr, &raw_fds, limit.get(),
         &error));
     object_ptr<GUnixFDList> fds(raw_fds);
@@ -202,6 +206,7 @@ bool acquire_fd(unix_guard &guard, const wg_options &options, deadline &limit,
         detail = take_error(error);
         return false;
     }
+    guard.scope = options.allow_suspend_block ? WG_SCOPE_SUSPEND : WG_SCOPE_IDLE_SYSTEM;
     return true;
 }
 
@@ -287,13 +292,33 @@ wg_guard *wg_platform_acquire(const wg_options &options, std::string &detail) {
         detail = "Native backend is unavailable on Unix; use a bus backend";
         return nullptr;
     }
-    deadline limit(options.timeout_ms);
+    const auto end =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(options.timeout_ms);
     const wg_backend candidates[] = {WG_BACKEND_PORTAL, WG_BACKEND_LOGIND, WG_BACKEND_CONSOLEKIT};
+    const auto eligible = [&options](wg_backend backend) {
+        return (options.backend == WG_BACKEND_AUTO || options.backend == backend) &&
+               (backend != WG_BACKEND_PORTAL || options.allow_suspend_block);
+    };
+    auto remaining_candidates =
+        std::count_if(std::begin(candidates), std::end(candidates), eligible);
     for (const auto backend : candidates) {
         if (options.backend != WG_BACKEND_AUTO && options.backend != backend)
             continue;
         if (backend == WG_BACKEND_PORTAL && !options.allow_suspend_block)
             continue;
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   end - std::chrono::steady_clock::now())
+                                   .count();
+        if (remaining <= 0) {
+            detail += " (total acquisition deadline exceeded)";
+            break;
+        }
+        // Reserve time for later candidates: a silent portal or stalled logind
+        // must not consume every retry without ever trying a usable fallback.
+        const auto budget =
+            static_cast<unsigned int>(std::max<std::int64_t>(1, remaining / remaining_candidates));
+        --remaining_candidates;
+        deadline limit(budget);
         std::string attempt;
         auto guard = connect(backend, limit, attempt);
         if (guard && (backend == WG_BACKEND_PORTAL ? acquire_portal(*guard, options, limit, attempt)
@@ -303,8 +328,8 @@ wg_guard *wg_platform_acquire(const wg_options &options, std::string &detail) {
             detail += "; ";
         detail += std::string(wg_backend_name(backend)) + ": " + attempt;
         if (limit.expired()) {
-            detail += " (total acquisition deadline exceeded)";
-            break;
+            detail += remaining_candidates ? " (backend acquisition deadline exceeded)"
+                                           : " (total acquisition deadline exceeded)";
         }
     }
     return nullptr;

@@ -11,7 +11,7 @@
             return 1;                                                                              \
         }                                                                                          \
     } while (0)
-int main() {
+int main() try {
     static_assert(!std::is_copy_constructible<wakeguard::guard>::value);
     static_assert(std::is_nothrow_move_constructible<wakeguard::guard>::value);
     wg_error error{};
@@ -37,5 +37,13 @@ int main() {
     // Verify the documented empty state after moving ownership.
     // NOLINTNEXTLINE(bugprone-use-after-move)
     REQUIRE(!moved && !empty);
+    // Exercise the exported controller ABI without requesting a host inhibitor.
+    wakeguard::controller controller(wg_default_options());
+    controller.set_required(false);
+    controller.shutdown();
+    controller.shutdown();
     return 0;
+} catch (const std::exception &error) {
+    std::fprintf(stderr, "Unexpected API test exception: %s\n", error.what());
+    return 1;
 }

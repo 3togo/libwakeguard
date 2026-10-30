@@ -2,7 +2,7 @@
 
 A small, GUI-independent C++17 library for requesting that a computer remain
 awake during background work. C API, move-only C++ wrapper, CMake package, MIT licence.
-Version 0.1 is an initial implementation; the ABI is not yet stable.
+Version 0.2 is an initial implementation; the ABI is not yet stable.
 
 The default contract is **prevent idle system sleep**. It does not request
 screen, screen-lock, logout or shutdown inhibition. Explicit suspend, lid policy,
@@ -25,9 +25,10 @@ but availability depends on installed services and policy. This is not a claim
 of physical BSD validation.
 
 With `WG_BACKEND_AUTO`, strict mode tries logind then ConsoleKit2. Setting
-`allow_suspend_block = 1` first tries the portal, then the strict backends.
-An explicit backend disables fallback. The returned scope tells you what was
-actually requested; opting into a wider scope does not force it on every backend.
+`allow_suspend_block = 1` first tries portal Suspend, then `sleep:idle` locks
+through logind and ConsoleKit2. This is an explicit policy choice: it can also
+affect user-started suspend. An explicit backend disables fallback. The returned
+scope tells you what was requested. Native Windows/macOS backends remain idle-only.
 No backend substitutes screensaver suppression or simulated user input.
 
 **An accepted inhibitor is not proof that a desktop honours it.** For example,
@@ -51,7 +52,7 @@ ctest --test-dir build --output-on-failure
 cmake --install build --prefix /your/prefix
 ```
 
-Unix dependencies: C++17 toolchain, CMake 3.16+, pkg-config, GIO/GLib (`gio-unix-2.0`
+Unix dependencies: C++17 toolchain, CMake 3.12+, pkg-config, GIO/GLib (`gio-unix-2.0`
 2.40+), threads. Ubuntu/Debian: `libglib2.0-dev`. Windows and macOS use native SDKs
 and do not need GLib. `-DWAKEGUARD_WITH_DBUS=OFF` builds a Unix library which
 reports acquisition as unavailable. `-DBUILD_SHARED_LIBS=ON` builds a shared library.
@@ -59,7 +60,7 @@ reports acquisition as unavailable. `-DBUILD_SHARED_LIBS=ON` builds a shared lib
 Consumers can use `add_subdirectory()` or an installed package:
 
 ```cmake
-find_package(wakeguard 0.1 CONFIG REQUIRED)
+find_package(wakeguard 0.2 CONFIG REQUIRED)
 target_link_libraries(my_application PRIVATE wakeguard::wakeguard)
 ```
 
@@ -89,10 +90,35 @@ See `include/wakeguard/wakeguard.h` for the complete contract.
 Acquire and check are **blocking**. Dispatch them on an application worker
 thread; do not call them on every GUI/download tick. Unix acquisition has one
 total deadline (default 3 seconds) covering discovery, authentication, service
-activation, fallback and portal confirmation. A hung first candidate can consume
-the entire budget. There is no extra timeout per fallback. Native OS APIs do not
-expose a comparable cancellation deadline. A caller can use `std::async` or its
-existing executor; the library does not impose a task/event framework.
+activation, fallback and portal confirmation. Each eligible backend gets a share
+of the remaining budget so a silent portal cannot starve logind/ConsoleKit2.
+Fallback never receives a fresh total budget. Native OS APIs do not
+expose a comparable cancellation deadline. For an idempotent background state interface, use `wakeguard::controller`:
+
+```cpp
+auto options = wg_default_options();
+options.application = "aMule";
+options.reason = "Transferring files";
+// For a desktop portal-first policy, explicitly permit broader suspend locks:
+// options.allow_suspend_block = 1;
+wakeguard::controller sleep(options);
+sleep.set_required(true);  // Tick-safe; the worker acquires and checks the lock.
+wakeguard::controller_status event;
+if (sleep.take_event(event)) {
+    // Log event.detail on this thread; state/backend/scope identify the result.
+}
+sleep.set_required(false); // Releases asynchronously; late results are discarded.
+sleep.shutdown();          // Join and release before application shutdown.
+```
+
+The controller snapshots option strings, coalesces repeated desired-state updates,
+checks service health and retries failures (default intervals 30 seconds each).
+A health-probe timeout retains an owned inhibitor; confirmed loss releases it.
+A disable/enable generation change discards stale acquisitions. `take_event()`
+delivers the latest transition, not a history of every intermediate state.
+Serialize `shutdown()`/destruction; set_required and take_event may run concurrently.
+Shutdown may wait for the acquisition budget or a native OS call. Direct guard
+users may instead dispatch work on their own executor.
 
 Every guard has independent ownership. Windows uses a handle rather than
 thread-affine execution-state calls; macOS uses an assertion ID. Unix uses a
@@ -119,7 +145,7 @@ on transitions out and shutdown, and retry failures with backoff. If desired
 state changes while acquisition is pending, release the late result. Do not
 reinterpret existing queue/upload policy as part of integration. Both `amule` and
 `amuled` should use the same library; `amulegui` controls a different machine.
-The current aMule checkout is not modified by this repository.
+The library contains no aMule transfer policy; its adapter is maintained in the aMule repository.
 
 ## Validation
 
@@ -128,7 +154,7 @@ system bus. They never acquire host power inhibitors or change host settings.
 Install `python3-gi` and `dbus` for these tests; inspect CTest output to confirm
 that `dbus_integration` is registered (otherwise CMake reports why it is skipped).
 
-The suite includes 34 private-bus tests plus C/C++ API and deterministic core,
+The suite includes 36 private-bus tests plus C/C++ API and deterministic core,
 Windows, macOS and unsupported-backend unit tests. Native SDK doubles exercise
 production ownership/error paths on Linux; they do not establish native ABI or
 power-policy correctness. Tests caught and fixed ownership of an output assertion

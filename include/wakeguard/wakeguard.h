@@ -34,8 +34,9 @@ typedef enum wg_scope { WG_SCOPE_IDLE_SYSTEM = 0, WG_SCOPE_SUSPEND } wg_scope;
 /* Initialize with wg_default_options(). Strings are UTF-8 and are copied during
  * acquire. timeout_ms is a total Unix acquisition budget (1..60000 ms).
  * Native OS calls do not offer cancellation/deadlines.
- * allow_suspend_block must be 1 to use the portal: Suspend is broader than idle
- * system sleep. No backend requests screen/idle-session/lock inhibition.
+ * allow_suspend_block=1 opts into portal Suspend and logind/ConsoleKit sleep:idle
+ * locks, which may also affect explicit suspend. Zero keeps idle-only requests.
+ * No backend requests screen/idle-session/lock inhibition.
  * window is an optional XDG portal window identifier, or an empty string.
  */
 typedef struct wg_options {

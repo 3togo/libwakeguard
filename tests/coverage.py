@@ -40,8 +40,10 @@ for notes in sorted(BUILD.rglob('*.gcno')):
     result = subprocess.run(['gcov', '--json-format', str(notes)], cwd=output_dir,
         capture_output=True, text=True, check=True)
     # A gcov profile mismatch can exit successfully but invalidate counts.
-    if result.stderr:
-        raise RuntimeError(result.stderr)
+    errors = [line for line in result.stderr.splitlines()
+              if 'cannot open data file, assuming not executed' not in line]
+    if errors:
+        raise RuntimeError('\n'.join(errors))
     for output in output_dir.glob('*.gcov.json.gz'):
         data = json.loads(gzip.decompress(output.read_bytes()))
         for entry in data['files']:

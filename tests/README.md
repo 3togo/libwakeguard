@@ -15,14 +15,15 @@ ctest --test-dir build --output-on-failure
 | `api` | Real library's invalid-argument and C++ wrapper behaviour |
 | `c_api` | C compilation/linking and error reporting |
 | `core_unit` | Production C boundary with injected backend outcomes: all rejected option fields, timeout boundaries, useful/truncated diagnostics, success clearing stale errors, standard/non-standard exceptions, status propagation and C++ ownership |
+| `controller_unit` | Idempotent tick requests, option snapshots, late/stale acquisition disposal, backoff, error-detail delivery, service-loss recovery and joined shutdown |
 | `unsupported_unit` | Production no-backend implementation reports failure, never silent success |
 | `windows_unit` | Production Windows control flow against minimal SDK doubles: UTF-8 conversion errors, creation/setup errors, reason/flags, handle lifetime, cross-thread release and cleanup even when clear fails |
 | `macos_unit` | Production macOS control flow against minimal SDK doubles: CFString errors/lifetime, assertion errors, no ownership of failed output IDs, reason/type/level, independent assertions and cross-thread release |
-| `dbus_integration` | Production Unix backend through the public wrapper, against private-bus services; 34 named tests with additional parameterized scenarios |
+| `dbus_integration` | Production Unix backend through the public wrapper, against private-bus services; 36 named tests with additional parameterized scenarios |
 | `native_lifetime` | Windows/macOS only: acquisition, independent owners and cross-thread release against the real native SDK and OS |
 
-Linux with GIO runs seven suites. Linux without GIO runs six; Windows/macOS run
-five, including native lifetime. SDK doubles are compiled only into separate
+Linux with GIO runs eight suites. Linux without GIO runs seven; Windows/macOS run
+six, including native lifetime. SDK doubles are compiled only into separate
 Unix test executables. They are not installed, linked into the library or used
 by real native builds. Their results do not verify native SDK declarations,
 Unicode conversion implementation, ABI or actual power policy.

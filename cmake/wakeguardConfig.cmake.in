@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
+find_dependency(Threads)
 if(@WAKEGUARD_USES_GIO@)
     find_dependency(PkgConfig)
     pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-unix-2.0>=2.40)
