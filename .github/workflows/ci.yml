@@ -20,7 +20,7 @@ jobs:
         run: cmake -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DWAKEGUARD_BUILD_TESTS=ON -DWAKEGUARD_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Configure Linux protocol tests
         if: runner.os == 'Linux'
-        run: cmake -S . -B build -DWAKEGUARD_TEST_PYTHON=/usr/bin/python3
+        run: cmake -S . -B build -DWAKEGUARD_TEST_PYTHON=/usr/bin/python3 -DWAKEGUARD_REQUIRE_DBUS_TESTS=ON
       - name: Build
         run: cmake --build build --config Debug --parallel
       - name: Test
@@ -46,3 +46,31 @@ jobs:
       - run: cmake -S . -B build -DWAKEGUARD_WITH_DBUS=OFF -DWAKEGUARD_BUILD_TESTS=ON
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev python3-gi dbus clang-tidy-18 clang-format-18
+      - name: Configure sanitizers
+        run: >-
+          cmake -S . -B build-sanitize -DWAKEGUARD_BUILD_TESTS=ON
+          -DWAKEGUARD_REQUIRE_DBUS_TESTS=ON -DWAKEGUARD_TEST_PYTHON=/usr/bin/python3
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - run: cmake --build build-sanitize --parallel
+      - run: ctest --test-dir build-sanitize --output-on-failure
+      - name: Formatting
+        run: git ls-files -z '*.cpp' '*.hpp' '*.h' '*.c' | xargs -0 clang-format-18 --dry-run --Werror
+      - name: Static analysis
+        run: >-
+          clang-tidy-18 -p build-sanitize src/wakeguard.cpp src/unix.cpp src/windows.cpp
+          src/macos.cpp src/unsupported.cpp tests/core_unit.cpp tests/windows_unit.cpp
+          tests/macos_unit.cpp tests/unsupported_unit.cpp tests/probe.cpp tests/api.cpp --quiet
+      - name: Coverage
+        run: /usr/bin/python3 tests/coverage.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: line-coverage
+          path: build-coverage/coverage-summary.json

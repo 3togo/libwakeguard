@@ -28,13 +28,15 @@ wg_guard *wg_platform_acquire(const wg_options &options, std::string &detail) {
         detail = "Reason is not valid UTF-8";
         return nullptr;
     }
-    const auto result =
-        IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep,
-                                    kIOPMAssertionLevelOn, reason, &guard->assertion);
+    IOPMAssertionID assertion = kIOPMNullAssertionID;
+    const auto result = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep,
+                                                    kIOPMAssertionLevelOn, reason, &assertion);
     CFRelease(reason);
     if (result != kIOReturnSuccess) {
         detail = "IOPMAssertionCreateWithName failed (IOKit error " + std::to_string(result) + ")";
         return nullptr;
     }
+    // A failed call does not transfer ownership of its output parameter.
+    guard->assertion = assertion;
     return guard.release();
 }

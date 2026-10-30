@@ -128,16 +128,21 @@ system bus. They never acquire host power inhibitors or change host settings.
 Install `python3-gi` and `dbus` for these tests; inspect CTest output to confirm
 that `dbus_integration` is registered (otherwise CMake reports why it is skipped).
 
-Coverage includes FD index handling and lifetime, crash cleanup, independent
-concurrent clients, C++ moves, policy denial wording, malformed replies, total
-timeout, service disappearance/replacement, strict fallback, portal opt-in,
-confirmation before method reply, refusal, absent confirmation, and portal
-connection cleanup. C and C++ API checks cover invalid arguments and ownership.
+The suite includes 34 private-bus tests plus C/C++ API and deterministic core,
+Windows, macOS and unsupported-backend unit tests. Native SDK doubles exercise
+production ownership/error paths on Linux; they do not establish native ABI or
+power-policy correctness. Tests caught and fixed ownership of an output assertion
+ID after a failed macOS acquisition. See [tests/README.md](tests/README.md) for
+coverage, dependencies, sanitizer commands and repeatable line-coverage generation.
+`-DWAKEGUARD_REQUIRE_DBUS_TESTS=ON` makes missing integration prerequisites fatal
+instead of silently omitting that suite.
 
 CI is configured for static/shared Linux, Windows and macOS builds, API checks,
 native Windows/macOS acquisition/lifetime checks and a Unix build without D-Bus.
-Configured CI is not evidence that those jobs have run. At initial development,
-local execution covers Linux builds and mocked protocols only. Actual idle-suspend,
+CI also includes sanitizers, clang-tidy-18, clang-format-18 and coverage.
+Configured CI is not evidence that those jobs have run; see `VALIDATION.md` for
+observed results. Local execution covers Linux builds and mocked native/protocol
+interfaces. Actual idle-suspend,
 manual-suspend, display blanking and lock behaviour still require physical tests
 on Cinnamon, GNOME, KDE, Windows, macOS and intended BSD environments, plus
 Flatpak, AppImage and headless/service deployments. No desktop/platform is marked

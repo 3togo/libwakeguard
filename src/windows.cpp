@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 libwakeguard contributors
 #ifndef _WIN32_WINNT
+// Windows SDK selection macro, required to declare the Windows 7 power APIs.
+// NOLINTNEXTLINE(bugprone-reserved-identifier)
 #define _WIN32_WINNT 0x0601
 #endif
 #include "internal.hpp"
