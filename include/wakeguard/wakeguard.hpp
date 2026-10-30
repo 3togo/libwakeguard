@@ -53,7 +53,8 @@ struct controller_status {
 
 // A single worker owns the inhibitor, runs acquisition/health checks and retries
 // failures with backoff. Repeated requests are idempotent and do no bus/OS work.
-// Options strings are snapshotted. take_event() returns the latest transition,
+// Options strings are snapshotted; retry/check intervals must be 1ms..24h.
+// take_event() returns the latest transition,
 // including backend failure details, for logging on the application's thread.
 class WG_EXPORT controller {
   public:

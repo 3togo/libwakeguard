@@ -60,6 +60,21 @@ bool event(wakeguard::controller &controller, wakeguard::phase phase,
     }
     return false;
 }
+void invalid_intervals() {
+    for (auto interval : {0ms, -1ms, 86400001ms, std::chrono::milliseconds::max()}) {
+        for (bool retry : {false, true}) {
+            bool rejected = false;
+            try {
+                wakeguard::controller controller(wg_default_options(), retry ? interval : 1s,
+                                                 retry ? 1s : interval);
+            } catch (const std::invalid_argument &) {
+                rejected = true;
+            }
+            CHECK(rejected);
+        }
+    }
+    CHECK(service.attempts == 0);
+}
 void idempotence_and_snapshots() {
     service.reset();
     std::string name = "aMule";
@@ -213,6 +228,7 @@ wg_guard *wg_platform_acquire(const wg_options &options, std::string &detail) {
 }
 int main() {
     try {
+        invalid_intervals();
         idempotence_and_snapshots();
         disable_during_acquisition();
         stale_generation_is_discarded();

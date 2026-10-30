@@ -9,7 +9,7 @@ for reproduction commands and the distinction between unit, protocol and native 
 | Release shared build with `-Wall -Wextra -Wpedantic -Werror` | 8/8 suites pass | Shared exports and Release execution of those paths |
 | Unix build with D-Bus disabled | 7/7 suites pass | Optional-dependency path, including real unsupported-backend failure |
 | AddressSanitizer + UndefinedBehaviorSanitizer | 8/8 suites pass | No reported memory/UB defects in exercised paths, including normal destructor cleanup |
-| Core/controller/Windows/macOS/unsupported unit executables | 307 assertions, zero failures | Fault injection, diagnostic propagation and independent ownership |
+| Core/controller/Windows/macOS/unsupported unit executables | 316 assertions, zero failures | Fault injection, diagnostic propagation and independent ownership |
 | Installed static/shared packages and separate C/C++ CMake consumers | Both consumers pass for both packages | Installed headers, targets and link dependencies |
 | clang-tidy-18; clang-format-18; Git whitespace checks | Pass | No project diagnostics under configured analysis checks; formatting |
 
@@ -25,7 +25,7 @@ Unix library and the independent fault-injection executables:
 | `src/macos.cpp` | 24/24 | 100% (SDK doubles) |
 | `src/unsupported.cpp` | 3/3 | 100% |
 | `src/unix.cpp` | 195/206 | 94.7% |
-| `src/controller.cpp` | 105/127 | 82.7% |
+| `src/controller.cpp` | 107/128 | 83.6% |
 
 This is line coverage, not branch coverage or evidence that all requirements are
 satisfied. The remaining Unix paths include bus-address discovery failure,

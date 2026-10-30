@@ -112,7 +112,8 @@ sleep.shutdown();          // Join and release before application shutdown.
 ```
 
 The controller snapshots option strings, coalesces repeated desired-state updates,
-checks service health and retries failures (default intervals 30 seconds each).
+checks service health and retries failures (default intervals 30 seconds each,
+accepted range 1 millisecond through 24 hours).
 A health-probe timeout retains an owned inhibitor; confirmed loss releases it.
 A disable/enable generation change discards stale acquisitions. `take_event()`
 delivers the latest transition, not a history of every intermediate state.

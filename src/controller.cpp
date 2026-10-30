@@ -29,7 +29,8 @@ struct controller::impl {
           reason(input.reason ? input.reason : ""), window(input.window ? input.window : ""),
           options(input), retry_interval(retry), check_interval(check) {
         if (!input.application || !input.reason || !input.window || application.empty() ||
-            reason.empty() || retry.count() <= 0 || check.count() <= 0)
+            reason.empty() || retry.count() <= 0 || check.count() <= 0 ||
+            retry > std::chrono::hours(24) || check > std::chrono::hours(24))
             throw std::invalid_argument("Invalid controller options or intervals");
         options.application = application.c_str();
         options.reason = reason.c_str();
