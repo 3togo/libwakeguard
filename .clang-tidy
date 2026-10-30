@@ -1,0 +1,4 @@
+InheritParentConfig: false
+Checks: '-*,clang-analyzer-*,bugprone-*,performance-*,portability-*'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/libwakeguard/(include|src|tests)/.*'

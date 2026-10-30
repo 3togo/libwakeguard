@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: MIT
+cmake_minimum_required(VERSION 3.16)
+project(wakeguard VERSION 0.1.0 LANGUAGES C CXX)
+include(GNUInstallDirs)
+include(GenerateExportHeader)
+include(CMakePackageConfigHelpers)
+option(WAKEGUARD_WITH_DBUS "Build Unix D-Bus backends using GIO" ON)
+option(WAKEGUARD_BUILD_TESTS "Build tests" OFF)
+option(WAKEGUARD_BUILD_EXAMPLES "Build example" OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_library(wakeguard src/wakeguard.cpp)
+add_library(wakeguard::wakeguard ALIAS wakeguard)
+target_compile_features(wakeguard PUBLIC cxx_std_17)
+set_target_properties(wakeguard PROPERTIES CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES VERSION ${PROJECT_VERSION} SOVERSION 0)
+generate_export_header(wakeguard EXPORT_MACRO_NAME WG_EXPORT
+    EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/include/wakeguard/export.h)
+if(NOT BUILD_SHARED_LIBS)
+    target_compile_definitions(wakeguard PUBLIC WAKEGUARD_STATIC_DEFINE)
+endif()
+target_include_directories(wakeguard PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+set(WAKEGUARD_USES_GIO OFF)
+if(WIN32)
+    target_sources(wakeguard PRIVATE src/windows.cpp)
+elseif(APPLE)
+    target_sources(wakeguard PRIVATE src/macos.cpp)
+    target_link_libraries(wakeguard PRIVATE "-framework CoreFoundation" "-framework IOKit")
+elseif(UNIX AND WAKEGUARD_WITH_DBUS)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-unix-2.0>=2.40)
+    find_package(Threads REQUIRED)
+    target_sources(wakeguard PRIVATE src/unix.cpp)
+    target_link_libraries(wakeguard PRIVATE PkgConfig::GIO Threads::Threads)
+    set(WAKEGUARD_USES_GIO ON)
+else()
+    target_sources(wakeguard PRIVATE src/unsupported.cpp)
+endif()
+install(TARGETS wakeguard EXPORT wakeguardTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(DIRECTORY include/wakeguard DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/wakeguard/export.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/wakeguard)
+install(FILES LICENSE NOTICE.md DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/wakeguard)
+install(FILES third_party/keepawake-rs.LICENSE
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/wakeguard/third_party)
+configure_package_config_file(cmake/wakeguardConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/wakeguardConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wakeguard)
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/wakeguardConfigVersion.cmake
+    VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/wakeguardConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/wakeguardConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wakeguard)
+install(EXPORT wakeguardTargets NAMESPACE wakeguard::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wakeguard)
+if(WAKEGUARD_BUILD_EXAMPLES)
+    add_executable(wakeguard-hold examples/hold.cpp)
+    target_link_libraries(wakeguard-hold PRIVATE wakeguard::wakeguard)
+endif()
+if(WAKEGUARD_BUILD_TESTS)
+    enable_testing()
+    add_executable(wakeguard-api-test tests/api.cpp)
+    target_link_libraries(wakeguard-api-test PRIVATE wakeguard::wakeguard)
+    add_test(NAME api COMMAND wakeguard-api-test)
+    add_executable(wakeguard-c-test tests/c_api.c)
+    target_link_libraries(wakeguard-c-test PRIVATE wakeguard::wakeguard)
+    add_test(NAME c_api COMMAND wakeguard-c-test)
+    if(WIN32 OR APPLE)
+        find_package(Threads REQUIRED)
+        add_executable(wakeguard-native-test tests/native.cpp)
+        target_link_libraries(wakeguard-native-test PRIVATE wakeguard::wakeguard Threads::Threads)
+        add_test(NAME native_lifetime COMMAND wakeguard-native-test)
+    endif()
+    if(WAKEGUARD_USES_GIO)
+        add_executable(wakeguard-probe tests/probe.cpp)
+        target_link_libraries(wakeguard-probe PRIVATE wakeguard::wakeguard)
+        find_program(WAKEGUARD_TEST_PYTHON NAMES python3 PATHS /usr/bin)
+        find_program(DBUS_RUN_SESSION dbus-run-session)
+        if(WAKEGUARD_TEST_PYTHON AND DBUS_RUN_SESSION)
+            execute_process(COMMAND ${WAKEGUARD_TEST_PYTHON} -c "from gi.repository import Gio"
+                RESULT_VARIABLE HAS_PYTHON_GI OUTPUT_QUIET ERROR_QUIET)
+            if(HAS_PYTHON_GI EQUAL 0)
+                add_test(NAME dbus_integration COMMAND ${DBUS_RUN_SESSION} --
+                    ${WAKEGUARD_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/dbus_integration.py
+                    $<TARGET_FILE:wakeguard-probe>)
+                set_tests_properties(dbus_integration PROPERTIES TIMEOUT 60)
+            else()
+                message(STATUS "D-Bus integration tests skipped: Python GObject unavailable")
+            endif()
+        else()
+            message(STATUS "D-Bus integration tests skipped: Python or dbus-run-session unavailable")
+        endif()
+    endif()
+endif()

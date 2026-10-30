@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: MIT
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+        shared: ['ON', 'OFF']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unix dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev python3-gi dbus
+      - name: Configure
+        run: cmake -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DWAKEGUARD_BUILD_TESTS=ON -DWAKEGUARD_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Configure Linux protocol tests
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -DWAKEGUARD_TEST_PYTHON=/usr/bin/python3
+      - name: Build
+        run: cmake --build build --config Debug --parallel
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
+      - name: Install
+        run: cmake --install build --config Debug --prefix install
+      - name: Installed package consumer
+        run: cmake -S tests/install-consumer -B build-consumer -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install
+      - run: cmake --build build-consumer --config Debug --parallel
+      - name: Installed consumer tests (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build-consumer -C Debug --output-on-failure
+      - name: Installed consumer tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = "${{ github.workspace }}/install/bin;$env:PATH"
+          ctest --test-dir build-consumer -C Debug --output-on-failure
+  no-dbus:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DWAKEGUARD_WITH_DBUS=OFF -DWAKEGUARD_BUILD_TESTS=ON
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure

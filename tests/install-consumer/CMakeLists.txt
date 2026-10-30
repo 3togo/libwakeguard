@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+cmake_minimum_required(VERSION 3.16)
+project(wakeguard_consumer LANGUAGES C CXX)
+find_package(wakeguard 0.1 CONFIG REQUIRED)
+add_executable(consumer_c ../c_api.c)
+target_link_libraries(consumer_c PRIVATE wakeguard::wakeguard)
+add_executable(consumer_cpp ../api.cpp)
+target_link_libraries(consumer_cpp PRIVATE wakeguard::wakeguard)
+enable_testing()
+add_test(NAME installed_c COMMAND consumer_c)
+add_test(NAME installed_cpp COMMAND consumer_cpp)
